@@ -1,0 +1,9 @@
+pymongo[srv]
+python-dotenv
+requests
+flask
+streamlit
+google-cloud-aiplatform
+vertexai
+pandas
+numpy
