@@ -1,3 +1,12 @@
+# ============================================================
+# MODULE: main.py
+# PURPOSE: Entry point that orchestrates the full ConstructIQ audit pipeline
+#          from PDF ingestion through anomaly detection to agent reporting.
+# PIPELINE STAGE: Orchestration (top-level)
+# INPUTS: Raw timesheet PDF files (via the ingestion package)
+# OUTPUTS: Audit report documents written to MongoDB audit_reports collection
+# ============================================================
+
 """
 Entry point for the ConstructIQ pipeline.
 
