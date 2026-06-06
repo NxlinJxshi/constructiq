@@ -1,6 +1,7 @@
 pymongo[srv]
 python-dotenv
 certifi
+python-dateutil
 requests
 flask
 streamlit
