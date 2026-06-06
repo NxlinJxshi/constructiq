@@ -11,6 +11,7 @@
 """Creates and manages the MongoDB client connection using MONGODB_URI from environment."""
 
 import os
+import certifi                      # provides Mozilla's trusted CA bundle for SSL verification
 from dotenv import load_dotenv      # reads key=value pairs from a .env file into os.environ
 from pymongo import MongoClient     # official MongoDB Python driver
 from pymongo.errors import ConnectionFailure  # specific exception for connection problems
@@ -22,7 +23,9 @@ load_dotenv()
 # Create one shared client for the whole application.
 # MongoClient is thread-safe and expensive to construct, so we build it once
 # at import time and reuse it everywhere.
-_client = MongoClient(os.getenv("MONGODB_URI"))
+# tlsCAFile points to certifi's Mozilla CA bundle — required on macOS Python 3.9
+# because the system SSL store is not used by default by the python.org installer.
+_client = MongoClient(os.getenv("MONGODB_URI"), tlsCAFile=certifi.where())
 
 # Select the "constructiq" database inside the Atlas cluster.
 # If it doesn't exist yet, MongoDB creates it automatically on first write.
