@@ -32,7 +32,19 @@ db = _client["constructiq"]
 # These are the three logical "tables" the pipeline reads and writes.
 # Importing modules reference these directly (e.g. `from database.mongo_client import timesheets`).
 
-# Stores one document per ingested daily timesheet row (worker, hours, cost code, date, etc.)
+# Stores one document per ingested daily timesheet row.
+# Expected schema fields (populated during ingestion from real HCSS PDFs):
+#   project_id   — HCSS project number, e.g. "31062-00"
+#   project_name — Human-readable project name, e.g. "Westmorland Elementary School"
+#   date         — Shift date (ISO 8601 string, e.g. "2024-03-15")
+#   worker_name  — Full name as it appears in HCSS
+#   labor_class  — HCSS labor class code (e.g. "SLLS-L1")
+#   cost_code    — HCSS cost code string; join key to the baselines collection
+#   straight_time_hours — Regular hours worked that shift
+#   overtime_hours      — Overtime hours worked that shift
+#   equipment_hours     — Hours billed to an equipment asset that shift (0 if none)
+#   equipment_type      — Asset name if equipment_hours > 0 (e.g. "SKYTRAK 10054")
+#   units_completed     — Production units reported (0 if the row was blank in HCSS)
 timesheets = db["timesheets"]
 
 # Stores expected/historical averages per cost_code + labor_class combination.
