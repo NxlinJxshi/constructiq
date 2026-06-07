@@ -9,3 +9,6 @@ google-cloud-aiplatform
 vertexai
 pandas
 numpy
+scikit-learn
+joblib
+google-cloud-storage
