@@ -1,0 +1,10 @@
+.env
+service_account.json
+data/
+artifacts/
+*.joblib
+__pycache__/
+.pytest_cache/
+.git/
+venv/
+.venv/

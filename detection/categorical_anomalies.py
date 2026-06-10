@@ -21,6 +21,18 @@ import uuid
 
 from database.mongo_client import baselines as baselines_col
 
+# Process-level cache: baselines are fetched from MongoDB once and reused for
+# every subsequent audit in the same process, eliminating repeated network calls.
+_baseline_cache: list[dict] | None = None
+
+
+def _load_baselines() -> dict:
+    """Return a cost_code → baseline dict, fetching from MongoDB only on first call."""
+    global _baseline_cache
+    if _baseline_cache is None:
+        _baseline_cache = list(baselines_col.find({}, {"_id": 0}))
+    return {doc["cost_code"]: doc for doc in _baseline_cache}
+
 
 def detect(records: list[dict]) -> list[dict]:
     """Flag records whose labor class or equipment type is unexpected for their cost code.
@@ -31,9 +43,7 @@ def detect(records: list[dict]) -> list[dict]:
       3. Equipment's operator_labor_class mismatches baseline["equipment_operator_pairs"] → wrong_operator_for_equipment
     Returns an empty list if no violations are found.
     """
-    # Load baselines once and key by cost_code for O(1) lookup per record.
-    docs = list(baselines_col.find({}, {"_id": 0}))
-    baseline_map = {doc["cost_code"]: doc for doc in docs}
+    baseline_map = _load_baselines()
 
     flags: list[dict] = []
 

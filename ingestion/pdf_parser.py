@@ -251,10 +251,10 @@ def parse_timesheet_pdf(pdf_path: str) -> list[dict]:
             f"Reducto Extract call failed: {exc}"
         ) from exc
 
-    # Reducto returns V3Extract (sync) or AsyncExtractResponse (async / URL-backed).
-    # The async case returns only a job_id and no result data.
-    from reducto.types.shared.async_extract_response import AsyncExtractResponse
-    if isinstance(response, AsyncExtractResponse):
+    # Reducto returns a sync result or an async job object (URL-backed extract).
+    # The async case carries a job_id but no result data.  Use duck-typing rather
+    # than a deep SDK import so any SDK version change can't escape as a bare ImportError.
+    if hasattr(response, "job_id") and not hasattr(response, "result"):
         raise ReductoUnavailableError(
             f"Reducto returned an async job (job_id={response.job_id}) instead of "
             "an inline result.  The SDK does not expose a get_job endpoint for "

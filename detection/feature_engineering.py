@@ -16,6 +16,10 @@ from __future__ import annotations
 import numpy as np
 from database.mongo_client import baselines as baselines_col
 
+# Process-level cache for baseline documents.  build_encoders() is called at
+# every audit; fetching from MongoDB each time adds unnecessary latency.
+_encoder_cache: dict | None = None
+
 # Canonical ordered feature names — must stay in sync with the training script.
 FEATURE_NAMES = [
     "labor_class_id",
@@ -69,13 +73,16 @@ def _parse_hhmm(hhmm: str) -> float:
 def build_encoders() -> dict:
     """Build deterministic integer encodings for cost codes and labor classes.
 
-    Reads all baseline documents from MongoDB, sorts both sets alphabetically,
-    and maps each value to a stable integer ID starting at 0. Running this
-    twice on the same dataset always produces identical mappings (no sklearn
-    LabelEncoder state to serialize).
+    Reads all baseline documents from MongoDB on the first call, then returns
+    the cached result on every subsequent call in the same process.  The mapping
+    is always derived from sorted sets so it is identical across train and inference.
 
     Returns {"cost_code_to_id": {...}, "labor_class_to_id": {...}}.
     """
+    global _encoder_cache
+    if _encoder_cache is not None:
+        return _encoder_cache
+
     docs = list(baselines_col.find({}, {"_id": 0}))
 
     # Collect all cost codes and labor classes across all baseline documents.
@@ -86,10 +93,11 @@ def build_encoders() -> dict:
         for lc in doc.get("typical_labor_classes", []):
             all_labor_classes.add(lc)
 
-    return {
+    _encoder_cache = {
         "cost_code_to_id":   {code: i for i, code in enumerate(sorted(cost_codes))},
         "labor_class_to_id": {lc: i for i, lc in enumerate(sorted(all_labor_classes))},
     }
+    return _encoder_cache
 
 
 def build_worker_features(records: list[dict]) -> tuple[np.ndarray, list[str]]:

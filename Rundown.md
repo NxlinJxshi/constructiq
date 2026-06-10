@@ -4,7 +4,7 @@
 
 ## 1. What This System Does
 
-ConstructIQ is an AI-powered construction timesheet audit agent that ingests HCSS HeavyJob timesheet PDFs, detects billing anomalies (missing data, statistical outliers, idle-equipment standby, mis-classified labor), and produces plain-English audit findings for a project manager. It serves construction PMs and replaces manual line-by-line review of daily timesheet cards. It is built for the **Google Agent Builder Hackathon 2026 (deadline June 11, 2026)**. A cold-start session should note: the ingestion, agent, API, and frontend layers are **docstring-only stubs** today (see §8); the detection layer and ML pipeline are fully built.
+ConstructIQ is an AI-powered construction timesheet audit agent that ingests HCSS HeavyJob timesheet PDFs, detects billing anomalies (missing data, statistical outliers, idle-equipment standby, mis-classified labor), and produces plain-English audit findings for a project manager. It serves construction PMs and replaces manual line-by-line review of daily timesheet cards. It is built for the **Google Agent Builder Hackathon 2026 (deadline June 11, 2026)**. The full pipeline is built end-to-end as of Day 3: ingestion (Reducto + normalizer), all four detection layers, Gemini narration, Flask API, and Streamlit UI. The only remaining stubs are the optional DB helper modules (`database/baselines.py`, `database/timesheets.py`).
 
 ## 2. Pipeline Architecture
 
@@ -25,14 +25,14 @@ constructiq/
 ├── requirements.txt
 ├── .env.example              # MONGODB_URI, REDUCTO_API_KEY, GOOGLE_APPLICATION_CREDENTIALS
 ├── .gitignore
-├── main.py                   # STUB (docstring only) — top-level orchestrator
+├── main.py                   # BUILT — run_audit() pipeline orchestrator
 ├── agent/
 │   ├── __init__.py
-│   ├── audit_agent.py        # STUB — Vertex/Gemini reasoning over flags
-│   └── prompts.py            # STUB — prompt templates
+│   ├── audit_agent.py        # BUILT — Gemini 2.0 Flash narration + ranking via Vertex AI
+│   └── prompts.py            # BUILT — AUDIT_SYSTEM_INSTRUCTION + AUDIT_USER_TEMPLATE constants
 ├── api/
 │   ├── __init__.py
-│   └── routes.py             # STUB — Flask upload/report endpoints
+│   └── routes.py             # BUILT — Flask POST /audit + GET /health
 ├── database/
 │   ├── __init__.py
 │   ├── mongo_client.py       # BUILT — client + timesheets/baselines/audit_reports
@@ -47,10 +47,10 @@ constructiq/
 │   └── numerical_outliers.py     # BUILT — Vertex endpoint inference
 ├── ingestion/
 │   ├── __init__.py
-│   ├── pdf_parser.py         # STUB — Reducto OCR call
+│   ├── pdf_parser.py         # BUILT — Reducto Extract call; ReductoUnavailableError fallback
 │   └── normalizer.py         # BUILT — HCSS cell parsing
 ├── frontend/
-│   └── app.py                # STUB — Streamlit dashboard
+│   └── app.py                # BUILT — Streamlit audit dashboard; severity-coloured flag cards
 ├── scripts/
 │   ├── seed_mongodb.py            # BUILT — seeds 5 baseline docs
 │   ├── generate_synthetic_data.py # BUILT — synthetic + planted anomalies
@@ -69,21 +69,21 @@ constructiq/
 
 | File path | What it does | What it contributes | Calls | Called by |
 |---|---|---|---|---|
-| `main.py` | Stub orchestrator (docstring only) | Planned top-level pipeline entry | — | standalone |
+| `main.py` | `run_audit(records)` — chains 4 detectors, validates §5 schema, calls Gemini, writes to `audit_reports`, returns report dict | Top-level pipeline entry | `detection.*`, `agent.audit_agent`, `database.mongo_client` | `api.routes`, `frontend.app` |
 | `database/mongo_client.py` | Builds shared `MongoClient` with `certifi` TLS; exposes `timesheets`, `baselines`, `audit_reports`; `test_connection()` | Single DB access point | `os`, `certifi`, `dotenv`, `pymongo` | `detection.categorical_anomalies`, `detection.feature_engineering`, `scripts.seed_mongodb`, `scripts.generate_synthetic_data` |
 | `database/baselines.py` | Stub | Planned baseline read helpers | — | standalone |
 | `database/timesheets.py` | Stub | Planned timesheet CRUD | — | standalone |
-| `ingestion/pdf_parser.py` | Stub | Planned Reducto OCR call | — | standalone |
+| `ingestion/pdf_parser.py` | Uploads PDF to Reducto Extract with `HCSS_SCHEMA`; raises `ReductoUnavailableError` if key missing or call fails | Reducto OCR ingestion | `reducto.Reducto`, `dotenv` | `api.routes`, `frontend.app` |
 | `ingestion/normalizer.py` | Parses HCSS cells (`"8/2.5"`, `"/1"`), builds canonical worker/equipment records | Turns OCR rows into typed dicts | `uuid` | `tests.test_normalizer` |
 | `detection/missing_values.py` | Flags null/empty required fields per entity; field-based severity | First detection gate | `json`, `uuid` | (intended) `agent.audit_agent` |
 | `detection/categorical_anomalies.py` | Labor-class / equipment / operator-pairing rule checks vs baselines | Categorical layer | `database.mongo_client.baselines`, `uuid` | (intended) pipeline |
 | `detection/equipment_standby.py` | Per-operator + group-avg standby detection | Standby layer | `collections`, `uuid` | (intended) pipeline |
 | `detection/feature_engineering.py` | Builds `(N,10)` matrix; `build_encoders()`; `AnomalyScorer` wrapper | Feature prep for IsolationForest | `numpy`, `database.mongo_client.baselines` | `scripts.train_model`, `scripts.deploy_model`, `detection.numerical_outliers`, `tests.test_feature_engineering` |
 | `detection/numerical_outliers.py` | Scores workers via Vertex endpoint in batches of 100; flags below threshold | Numerical layer (online inference) | `numpy`, `joblib`, `dotenv`, `google.cloud.aiplatform`, `detection.feature_engineering` | standalone (CLI) |
-| `agent/audit_agent.py` | Stub | Planned Gemini reasoning | — | standalone |
-| `agent/prompts.py` | Stub | Planned prompt templates | — | standalone |
-| `api/routes.py` | Stub | Planned Flask routes | — | standalone |
-| `frontend/app.py` | Stub | Planned Streamlit UI | — | standalone |
+| `agent/audit_agent.py` | `narrate_and_rank(flags)` calls Gemini 2.0 Flash via Vertex AI; rewrites explanations; sorts by severity; falls back to original flags on any failure | Gemini narration + ranking | `vertexai.GenerativeModel`, `agent.prompts` | `main` |
+| `agent/prompts.py` | Constants only: `AUDIT_SYSTEM_INSTRUCTION` and `AUDIT_USER_TEMPLATE` | Prompt templates | — | `agent.audit_agent` |
+| `api/routes.py` | Flask `POST /audit` (PDF or JSON records) + `GET /health` | HTTP interface | `main.run_audit`, `ingestion.pdf_parser`, `ingestion.normalizer` | Agent Builder, HTTP clients |
+| `frontend/app.py` | Streamlit demo UI: sample button, PDF upload, spinner, severity-coloured flag cards | Demo UI | `main.run_audit`, `ingestion.pdf_parser`, `ingestion.normalizer` | `streamlit run frontend/app.py` |
 | `scripts/seed_mongodb.py` | Inserts 5 hard-coded baseline docs | Seeds reference data | `database.mongo_client.baselines` | standalone |
 | `scripts/generate_synthetic_data.py` | Simulates 200 days / 12 workers; plants 4 labeled anomaly types | Ground-truth dataset | `numpy`, `database.mongo_client.baselines` | standalone |
 | `scripts/train_model.py` | Trains IsolationForest, evals recall, saves `model.joblib` | Produces ML artifact | `joblib`, `sklearn`, `detection.feature_engineering` | standalone |
@@ -148,14 +148,14 @@ This is the contract between all three detectors and the downstream Gemini call.
 
 ## 8. What Is Not Yet Built
 
-These exist as **docstring-only stubs** (or are entirely absent) and must be implemented. Paths below are where the functionality lives/will live:
+The full pipeline is implemented as of Day 3. Two optional DB helper modules remain as docstring-only stubs — detectors query `database.mongo_client` collections directly and nothing currently breaks without them:
 
-- `main.py` — single callable chaining all detectors into a unified flag list (the design brief calls this `agent/pipeline.py`; in this repo it belongs in `main.py`).
-- `api/routes.py` — Flask endpoints wrapping the pipeline; required for Agent Builder to invoke the system over HTTP (brief refers to `api/main.py`).
-- `ingestion/pdf_parser.py` — Reducto OCR call converting HCSS PDF export to raw rows (brief refers to `ingestion/reducto_client.py`).
-- `agent/audit_agent.py` + `agent/prompts.py` — take the flag list, call Gemini, return a natural-language explanation per flag (brief refers to `agent/gemini_reasoning.py`).
-- `frontend/app.py` — Streamlit audit report UI; ranked flag display legible to non-technical judges in under 30 seconds.
-- `database/baselines.py`, `database/timesheets.py` — read/write helpers (detectors currently query collections directly via `database.mongo_client`).
+- `database/baselines.py` — planned baseline read helpers; detectors bypass it today.
+- `database/timesheets.py` — planned timesheet CRUD; ingested records are not persisted to the `timesheets` collection (only `audit_reports` is written).
+
+**Pending environment config (no code changes needed):**
+- `REDUCTO_API_KEY` — add to `.env` to enable real PDF ingestion; pipeline falls back to synthetic data until set.
+- `VERTEX_ENDPOINT_NAME` — add to `.env` after running `python3 scripts/deploy_model.py` to activate numerical-outlier flags.
 
 ## 9. Commit History Summary
 
@@ -167,16 +167,18 @@ These exist as **docstring-only stubs** (or are entirely absent) and must be imp
 | `7538ba3` | Fix MongoDB Atlas SSL connection on macOS Python 3.9 | `certifi` `tlsCAFile` in `mongo_client.py` | Without it the python.org installer can't reach Atlas — blocks every DB call |
 | `edf7829` | Implement normalizer, missing-value detector, and synthetic data generator | `normalizer.py`, `missing_values.py`, `generate_synthetic_data.py` | Produces labeled ground truth and the first working detector |
 | `2746c03` | Add Day 2 detection pipeline: feature engineering, model training, Vertex AI deploy | `feature_engineering.py`, `categorical_anomalies.py`, `equipment_standby.py`, `numerical_outliers.py`, `train_model.py`, `deploy_model.py` | Completes all three detection layers and the ML deploy path — the core of the system |
+| `0f92ef6` | Day 3 — end-to-end agent pipeline, Reducto ingestion, Flask API, Streamlit demo UI | `main.py`, `ingestion/pdf_parser.py`, `agent/audit_agent.py`, `agent/prompts.py`, `api/routes.py`, `frontend/app.py` | Wires all layers into a live pipeline; demo runs on synthetic data with no keys needed |
 
 ## 10. Environment and Dependencies
 
 **Environment variables** (`.env`, see `.env.example`):
 - `MONGODB_URI` — Atlas connection string (`database/mongo_client.py`)
-- `REDUCTO_API_KEY` — Reducto OCR (planned ingestion)
-- `GOOGLE_APPLICATION_CREDENTIALS` — path to `service_account.json`
-- `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_REGION` — required by `deploy_model.py` / `numerical_outliers.py`
-- `VERTEX_ENDPOINT_NAME` — appended to `.env` by `deploy_model.py`; consumed by `numerical_outliers.py`
+- `REDUCTO_API_KEY` — Reducto Extract key (`ingestion/pdf_parser.py`); pipeline falls back to synthetic data if absent
+- `GOOGLE_APPLICATION_CREDENTIALS` — path to `service_account.json`; used by Vertex AI endpoint **and** Gemini (no separate Gemini key)
+- `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_REGION` — required by `deploy_model.py`, `numerical_outliers.py`, and `agent/audit_agent.py`
+- `VERTEX_ENDPOINT_NAME` — appended to `.env` by `deploy_model.py`; consumed by `numerical_outliers.py`; numerical-outlier layer is skipped (non-fatal) if unset
+- `GEMINI_MODEL` — optional override for the Gemini model name; defaults to `gemini-2.0-flash-001`
 
-**External services**: MongoDB Atlas (`constructiq` db: `timesheets`, `baselines`, `audit_reports`); Reducto OCR API; Google Cloud — Vertex AI (Model Registry + online endpoint, sklearn-cpu.1-3 container), Cloud Storage (`<project>-constructiq-models` bucket), Gemini (planned).
+**External services**: MongoDB Atlas (`constructiq` db: `timesheets`, `baselines`, `audit_reports`); Reducto Extract API; Google Cloud — Vertex AI (Model Registry + online endpoint, sklearn-cpu.1-3 container), Cloud Storage (`<project>-constructiq-models` bucket), Gemini 2.0 Flash via Vertex AI.
 
-**Python dependencies** (`requirements.txt`): `pymongo[srv]`, `python-dotenv`, `certifi`, `python-dateutil`, `requests`, `flask`, `streamlit`, `google-cloud-aiplatform`, `vertexai`, `pandas`, `numpy`, `scikit-learn`, `joblib`, `google-cloud-storage`.
+**Python dependencies** (`requirements.txt`): `pymongo[srv]`, `python-dotenv`, `certifi`, `python-dateutil`, `requests`, `flask`, `streamlit`, `google-cloud-aiplatform`, `vertexai`, `pandas`, `numpy`, `scikit-learn`, `joblib`, `google-cloud-storage`, `reductoai`.

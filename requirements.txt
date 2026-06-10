@@ -13,3 +13,4 @@ scikit-learn
 joblib
 google-cloud-storage
 reductoai
+gunicorn
