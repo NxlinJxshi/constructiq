@@ -36,7 +36,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Gemini model to use.  Override with GEMINI_MODEL env var for testing.
-_DEFAULT_MODEL = "gemini-2.0-flash-001"
+_DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _init_vertexai() -> None:

@@ -555,6 +555,7 @@ def main() -> None:
     out_path = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "data", "synthetic", "timesheets.json")
     )
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(records, f, indent=2)
 

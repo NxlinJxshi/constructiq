@@ -53,6 +53,13 @@ _FLAG_LABEL = {
 
 _SYNTHETIC_PATH = Path(__file__).parent.parent / "data" / "synthetic" / "timesheets.json"
 
+# Single-day slice of the synthetic dataset used for the demo "sample timesheet"
+# button. The full dataset is 3829 records / 200 days (built for ML training);
+# sending all of it through Gemini narration produces 400+ flags in one prompt,
+# which is far too slow for a live demo. This date has a realistic ~20-record
+# day with all four anomaly types represented.
+_SAMPLE_DATE = "2025-01-11"
+
 
 # ── Pipeline helpers ──────────────────────────────────────────────────────────
 
@@ -73,6 +80,7 @@ def _load_sample_and_run() -> dict:
         st.stop()
     with open(_SYNTHETIC_PATH) as f:
         records = json.load(f)
+    records = [r for r in records if r.get("date") == _SAMPLE_DATE]
     return _run_on_records(records)
 
 
@@ -203,8 +211,8 @@ def main() -> None:
 
     with col_upload:
         uploaded_pdf = st.file_uploader(
-            "Or upload an HCSS HeavyJob PDF",
-            type=["pdf"],
+            "Or upload an HCSS HeavyJob PDF or screenshot",
+            type=["pdf", "png", "jpg", "jpeg"],
             help="Requires REDUCTO_API_KEY in .env.  Falls back to sample data if not configured.",
             label_visibility="collapsed",
         )
