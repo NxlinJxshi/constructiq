@@ -157,6 +157,15 @@ if __name__ == "__main__":
     with open(data_path) as f:
         records = json.load(f)
 
+    # The full synthetic dataset is 3829 records / 200 days, built for ML
+    # training. Sending all of it through Gemini narration produces 400+
+    # flags in one prompt, which is too slow for an interactive run. Use the
+    # same single-day demo slice as the Streamlit "sample timesheet" button
+    # (frontend/app.py: _SAMPLE_DATE) — ~20 records covering all four
+    # anomaly types.
+    sample_date = "2025-01-11"
+    records = [r for r in records if r.get("date") == sample_date]
+
     print(f"Loaded {len(records)} synthetic records.  Running audit pipeline...\n")
 
     report = run_audit(records)
