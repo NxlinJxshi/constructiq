@@ -138,6 +138,11 @@ _STANDBY_RATE = 85
 
 _SYNTHETIC_PATH = Path(__file__).parent.parent / "data" / "synthetic" / "timesheets.json"
 
+# Real HCSS HeavyJob screenshot (Westmorland Elementary, 31062-00) bundled for
+# the "audit a real timesheet" demo path — runs the full Reducto → detectors →
+# Gemini pipeline on an actual export, not synthetic data.
+_SAMPLE_IMAGE_PATH = Path(__file__).parent.parent / "data" / "samples" / "hcss_timesheet.png"
+
 # Single-day slice of the synthetic dataset used for the demo sample button.
 # The full dataset is 3829 records / 200 days (built for ML training); sending
 # all of it through Gemini narration produces 400+ flags in one prompt, far
@@ -512,12 +517,27 @@ def _page_dashboard() -> None:
             "Run audit on uploaded file", type="primary", use_container_width=True
         )
         run_sample = st.button(
-            "▶  Run sample audit (no file needed)", use_container_width=True
+            "▶  Run sample audit (no file needed)",
+            help="Audits the bundled real HCSS HeavyJob export (Westmorland "
+                 "Elementary) through the full Reducto → detectors → Gemini "
+                 "pipeline. Falls back to synthetic data if OCR is unavailable.",
+            use_container_width=True,
         )
+        if _SAMPLE_IMAGE_PATH.exists():
+            with st.expander("Preview the sample timesheet"):
+                st.image(str(_SAMPLE_IMAGE_PATH))
         st.markdown("</div>", unsafe_allow_html=True)
 
         if run_sample:
-            report = _run_with_status(_load_sample_and_run)
+            # The sample audit runs the bundled real HCSS screenshot through
+            # the full pipeline; _run_on_pdf falls back to synthetic data when
+            # Reducto is unavailable (and so does a missing image file).
+            if _SAMPLE_IMAGE_PATH.exists():
+                report = _run_with_status(
+                    _run_on_pdf, str(_SAMPLE_IMAGE_PATH), "31062-00", "unknown"
+                )
+            else:
+                report = _run_with_status(_load_sample_and_run)
             _store_report(report)
             st.rerun()
         if run_upload:

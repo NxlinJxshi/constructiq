@@ -6,6 +6,10 @@ __pycache__/
 .DS_Store
 .venv/
 *.egg-info/
-data/synthetic/
-data/samples/
+# Generated/local data stays out, but the two files the deployed app's
+# sample-audit button needs at runtime must ship with the repo.
+data/synthetic/*
+!data/synthetic/timesheets.json
+data/samples/*
+!data/samples/hcss_timesheet.png
 artifacts/
