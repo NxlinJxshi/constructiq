@@ -36,9 +36,9 @@ def detect(records: list[dict]) -> list[dict]:
     """Score all scoreable worker records via the Vertex AI endpoint and flag anomalies.
 
     Builds feature vectors using build_worker_features(), sends them to the deployed
-    endpoint in batches of 100, and compares response scores against the threshold
-    saved in artifacts/model.joblib. Records scoring below the threshold are flagged;
-    those more than 0.05 below the threshold receive HIGH severity, others MEDIUM.
+    endpoint in batches of 100, and flags records the endpoint labels -1 (anomaly).
+    Severity is graded with continuous scores from the local artifact: records more
+    than 0.05 below the threshold receive HIGH severity, others MEDIUM.
     Raises RuntimeError if VERTEX_ENDPOINT_NAME is not set in .env.
     """
     endpoint_name = os.environ.get("VERTEX_ENDPOINT_NAME", "").strip()
@@ -69,23 +69,30 @@ def detect(records: list[dict]) -> list[dict]:
     threshold = float(artifact["threshold"])
 
     # ── Batch inference via Vertex AI endpoint ────────────────────────────────
-    # The endpoint calls AnomalyScorer.predict() which returns score_samples() values.
-    # Each value is a float: more negative → further from normal → more anomalous.
-    endpoint  = aiplatform.Endpoint(endpoint_name)
-    instances = X.tolist()
-    all_scores: list[float] = []
+    # The endpoint serves the raw IsolationForest, so predict() returns -1/1
+    # labels (-1 = anomaly). For IsolationForest, predict() == -1 exactly when
+    # score_samples() < offset_ — the same threshold stored in the artifact —
+    # so the flag decision is identical to thresholding continuous scores.
+    endpoint   = aiplatform.Endpoint(endpoint_name)
+    instances  = X.tolist()
+    all_labels: list[float] = []
 
     for batch in _chunks(instances, 100):
         response = endpoint.predict(instances=batch)
-        all_scores.extend(response.predictions)
+        all_labels.extend(response.predictions)
 
-    scores        = np.array(all_scores, dtype=float)
+    labels        = np.array(all_labels, dtype=float)
     records_by_id = {r["record_id"]: r for r in records}
 
-    # ── Flag records below threshold ──────────────────────────────────────────
+    # Continuous scores come from the local artifact (same forest the endpoint
+    # serves) — used only to grade severity and narrate how far below the
+    # threshold a flagged record falls; the flag decision is the endpoint's.
+    local_scores = np.array(artifact["model"].predict(X), dtype=float)
+
+    # ── Flag records the endpoint labeled anomalous ───────────────────────────
     flags: list[dict] = []
-    for rid, score in zip(record_ids, scores):
-        if score >= threshold:
+    for rid, label, score in zip(record_ids, labels, local_scores):
+        if label != -1:
             continue
 
         rec = records_by_id.get(rid, {})
