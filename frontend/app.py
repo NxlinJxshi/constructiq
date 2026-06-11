@@ -34,6 +34,38 @@ from pathlib import Path
 
 import streamlit as st
 
+
+def _bootstrap_secrets() -> None:
+    """Populate os.environ from Streamlit secrets when running on Streamlit
+    Community Cloud (no .env file there — config comes from st.secrets).
+
+    Locally, .env (loaded via python-dotenv in main.py / database modules)
+    already populates os.environ, and st.secrets is empty, so this is a no-op.
+    """
+    try:
+        secrets = st.secrets
+    except Exception:
+        return
+
+    for key in (
+        "MONGODB_URI", "REDUCTO_API_KEY", "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_REGION", "VERTEX_ENDPOINT_NAME", "GEMINI_MODEL",
+    ):
+        if key in secrets and not os.environ.get(key):
+            os.environ[key] = str(secrets[key])
+
+    # Service account JSON is stored as a secret block and written to a temp
+    # file at startup so GOOGLE_APPLICATION_CREDENTIALS can point at it (the
+    # Vertex/Gemini SDKs require a file path, not inline JSON).
+    if "GOOGLE_SERVICE_ACCOUNT_JSON" in secrets and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        creds_path = os.path.join(tempfile.gettempdir(), "constructiq_service_account.json")
+        with open(creds_path, "w") as f:
+            json.dump(dict(secrets["GOOGLE_SERVICE_ACCOUNT_JSON"]), f)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+
+
+_bootstrap_secrets()
+
 # ── Severity colours ──────────────────────────────────────────────────────────
 _SEVERITY_COLOR = {
     "high":   "#FF4B4B",
