@@ -33,8 +33,9 @@ ARTIFACT_PATH = os.path.normpath(
 ENV_PATH = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", ".env")
 )
-# sklearn pre-built container for Python 3.10 / sklearn 1.3
-SERVING_IMAGE = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
+# sklearn pre-built container — must match the sklearn minor version that
+# pickled the artifact (local training env runs sklearn 1.5.x).
+SERVING_IMAGE = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-5:latest"
 
 
 def _require_env(key: str) -> str:
@@ -98,7 +99,13 @@ def main() -> None:
     # model.joblib contains a dict. The Vertex AI sklearn container requires a single
     # object with a predict() method, so we extract and re-save just the AnomalyScorer.
     artifact = joblib.load(ARTIFACT_PATH)
-    scorer = artifact["model"]  # AnomalyScorer instance
+    # Upload the raw IsolationForest, NOT the AnomalyScorer wrapper: the
+    # pre-built sklearn container cannot import detection.feature_engineering,
+    # so unpickling a custom class crashes the model server at startup.
+    # The container's predict() then returns -1/1 labels (-1 = anomaly), which
+    # encode the same decision as score_samples() < offset_ — the threshold
+    # stored in the artifact. numerical_outliers.py handles the label format.
+    scorer = artifact["model"].forest  # raw sklearn IsolationForest
 
     # ── Upload scorer to GCS ──────────────────────────────────────────────────
     from google.cloud import storage as gcs
@@ -135,14 +142,21 @@ def main() -> None:
         print("Check: Vertex AI API enabled, IAM role 'Vertex AI User', quota not exceeded.")
         sys.exit(1)
 
-    # ── Create endpoint ───────────────────────────────────────────────────────
-    print("\nCreating endpoint (2-5 minutes)...")
+    # ── Create (or reuse) endpoint ────────────────────────────────────────────
     try:
-        endpoint = aiplatform.Endpoint.create(
-            display_name="constructiq-anomaly-detector-endpoint",
-            sync=True,
+        existing = aiplatform.Endpoint.list(
+            filter='display_name="constructiq-anomaly-detector-endpoint"'
         )
-        print(f"Endpoint created: {endpoint.resource_name}")
+        if existing:
+            endpoint = existing[0]
+            print(f"\nReusing existing endpoint: {endpoint.resource_name}")
+        else:
+            print("\nCreating endpoint (2-5 minutes)...")
+            endpoint = aiplatform.Endpoint.create(
+                display_name="constructiq-anomaly-detector-endpoint",
+                sync=True,
+            )
+            print(f"Endpoint created: {endpoint.resource_name}")
     except Exception as e:
         print(f"ERROR creating endpoint: {e}")
         sys.exit(1)
